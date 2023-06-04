@@ -1,0 +1,3 @@
+curl http://localhost:5000/process -d "data=Who is my son?" -X PUT
+curl http://localhost:5000/process -d "data=Who is my daughter?" -X PUT
+curl http://localhost:5000/process
