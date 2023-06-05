@@ -18,7 +18,7 @@ class QueryProcessRequest(Resource):
         processed_requests.append(processed_input)
         
         images = ImageManager().get_images(processed_input)
-        print(images)
+        
         processed_input['images'] = images
 
         return processed_input

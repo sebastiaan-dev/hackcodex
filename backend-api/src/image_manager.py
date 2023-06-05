@@ -12,9 +12,9 @@ class ImageManager():
     def load_all_image_names(self):
         self.image_dict = {}
 
-        image_list = [f for f in glob.glob("images/*.jpg")]
+        image_list = [f for f in glob.glob("images/*.png")]
         for image_path in image_list:
-            image_name = image_path.split("\\")[-1].split(".")[0]
+            image_name = image_path.split("/")[-1].split(".")[0]
 
             self.image_dict[image_name] = image_path
 

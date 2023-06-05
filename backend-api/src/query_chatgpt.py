@@ -9,6 +9,7 @@ from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
+from langchain.docstore.document import Document
 
 class QueryChatGPTSingleton():
     def __new__(cls):
@@ -26,19 +27,13 @@ class QueryChatGPTSingleton():
         self.__setup_retrieval()
 
     def __setup_chroma(self):
-        # if self.db is not None:
-        #     Chroma.delete_collection(self.db)
-
-        # if self.db is not None:
-        #     self.db.delete_collection()
-        #     # self.db.persist()
-
         # Load and parse the prompt file
         loader = TextLoader(self.prompt_file)
         documents = loader.load()
-        texts = self.__split_text(documents)
+        texts = self.__split_text(documents[0].page_content)
 
-        self.ids = [self.__hash_string(str(x)) for x in texts]
+        embedded_documents = [Document(page_content=x) for x in texts]
+        ids = [self.__hash_string(str(x)) for x in texts]
 
         print(self.ids)
 
@@ -46,14 +41,28 @@ class QueryChatGPTSingleton():
         collection_name = 'JAMES_ANDERSON'
         persist_directory = 'db'
         embeddings = OpenAIEmbeddings(openai_api_key=self.openai_api_key)
-        try: # Load the document if they do not exist
+
+        self.db = Chroma(
+                collection_name=collection_name,
+                embedding_function=embeddings,
+                persist_directory=persist_directory)
+
+        for index, embedded_document in enumerate(embedded_documents):
+            try:
+                self.db.add_documents(documents=[embedded_document], ids=[ids[index]])
+            except:
+                print(self.ids[index])
+
+        # Load the initial prompt file to seed the database
+        try:
             self.db = Chroma.from_documents(
                 collection_name=collection_name, 
-                documents=texts, 
+                documents=embedded_documents, 
                 embedding=embeddings, 
                 ids=self.ids, 
                 persist_directory=persist_directory)
         except:
+            print('Keys already exist.')
             self.db = Chroma(
                 collection_name=collection_name,
                 embedding_function=embeddings,
@@ -76,28 +85,15 @@ class QueryChatGPTSingleton():
         )        
         
     def add(self, input):
-        # sane (not working) method
-        # id = str(uuid.uuid4())
-        # self.ids.append(id)
-        # self.db.add_texts([input], ids=[id])
-        # self.db.persist()
+        # Add the new information to the vector database
+        embedded_document = Document(page_content=input)
+        id = self.__hash_string(str(input))
 
+        try:
+            self.db.add_documents(documents=[embedded_document], ids=[id])
+        except:
+            print(input, 'already exists.')
 
-        # hacky method
-        with open(self.prompt_file, "a") as promptfile:
-            promptfile.write('\n ' + input)
-
-        print(input)
-
-        self.__setup_chroma()
-        self.__setup_retrieval()
-
-        # texts = self.split_text(input)
-        # print(input)
-        # # self.db.add_texts(texts=[input])
-        # # self.db.persist()
-        # self.setup_retrieval()
-    
     def query(self, input, chain_uuid = None):
         output = self.qa.run(input)
 
@@ -116,7 +112,7 @@ class QueryChatGPTSingleton():
         You are an assistant responding to people who are suffering from Alzheimer's to help them remember things about themselves, their family and their past.
         Answer in a natural conversational manner. If you do not know how to respond or do not understand the prompt, respond with: I do not have information about your question, could you try again, or should I contact your caregiver?
         If someone responds with agreement to "I do not have information about your question, should I contact your caregiver?" respond with an affirming statement that you are contacting the caregiver defined in the context.
-        The caregiver in this context is not a doctor.  
+        The caregiver in this context is not a doctor.
         Use the following context (delimited by <ctx></ctx>) and the chat history (delimited by <hs></hs>) to answer the question:
         ------
         <ctx>
@@ -128,7 +124,7 @@ class QueryChatGPTSingleton():
         </hs>
         ------
         {question}
-        Answer:
+        Answer (in English):
         """
             
         return PromptTemplate(
@@ -143,8 +139,12 @@ class QueryChatGPTSingleton():
         return sha256_hash.hexdigest()
 
     def __split_text(self, input):
-        text_splitter = CharacterTextSplitter(        
-            chunk_size = 900,
-            chunk_overlap = 200,
+        text_splitter = CharacterTextSplitter(    
+            separator="\n",    
+            chunk_size = 500,
+            chunk_overlap = 100,
         )
-        return text_splitter.split_documents(input)
+        split_input = text_splitter.split_text(input)
+        print("SPLIT OUTPUT")
+        print(split_input)
+        return split_input
